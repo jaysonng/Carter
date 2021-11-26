@@ -1,6 +1,8 @@
 # Carter
 
-Carter is an Async/Await Swift Library to receive metadata and Open Graph information from URLs. Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina).
+Carter is a modern Swift Library to receive metadata and Open Graph information from URLs. 
+\
+Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina) Library.
 
 ## Installation
 
