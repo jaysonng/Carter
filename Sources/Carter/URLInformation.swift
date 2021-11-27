@@ -10,8 +10,24 @@ import UIKit
 import AVFoundation
 import Kanna
 
+
 /// A model containing information about a URL
 public class URLInformation: Equatable {
+    
+    enum Properties {
+        case originalURL
+        case url
+        case title
+        case descriptionText
+        case imageURL
+        case imageSize
+        case faviconURL
+        case appleTouchIconURL
+        case type
+        case siteName
+        case publishDate
+        case keywords
+    }
     
     /// The original URL the information was requested for.
     public let originalURL: URL
@@ -64,6 +80,10 @@ public class URLInformation: Equatable {
     /// The contents of the `keywords` tag of the link.
     /// need to see if we can get <script type="text/javascript"> data
     public var keywords: String?
+
+    /// The HTTPResponse from pulling the URL
+    public var httpURLResponse: HTTPURLResponse?
+
     
     /// Create a new instance of URLInformation with the given URL and title
     ///
@@ -71,26 +91,40 @@ public class URLInformation: Equatable {
     ///   - originalURL: The original URL the request was created with
     ///   - url: The URL which the information corresponds to. This might be an redirected url.
     ///   - html: The html of the page, this is used to search for (head) tags.
-    ///   - response: The HTTP response for the page, this includes the status code.
-    init(originalURL: URL, url: URL, html: HTMLDocument?, response: HTTPURLResponse?) {
+    ///   - response: The HTTPResponse for the page, this includes the status code.
+    init(originalURL: URL, url: URL, html: HTMLDocument?, response: HTTPURLResponse? = nil) {
         self.originalURL = originalURL
         self.url = url
+        self.httpURLResponse = response
+
         if let html = html {
             
             let test = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content")
-            dump("test:======= \(test)============")
-            if let typeString = html.xpath("//meta[(@property|@name)=\"og:type\"]/@content").first?.text, let type = URLInformationType.type(for: typeString) {
+            dump("test:======= \(test) ============")
+            
+            /// Type
+            /// og:type
+            if let typeString = html.xpath("//meta[(@property|@name)=\"og:type\"]/@content").first?.text,
+               let type       = URLInformationType.type(for: typeString)
+            {
                 self.type = type
             } else {
                 self.type = .website
             }
             
-            if let title = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content").first?.text {
+            /// Title
+            /// og:title
+            if let title = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content").first?.text
+            {
                 self.title = title
             } else if let title = html.title {
                 self.title = title
+            } else {
+                self.title = nil
             }
             
+            /// DescriptionText
+            /// og:description
             if let descriptionText = html.xpath("//meta[@property=\"og:description\"]/@content").first?.text {
                 self.descriptionText = descriptionText
             } else if let descriptionText = html.xpath("//meta[(@property|@name)=\"description\"]/@content").first?.text {
