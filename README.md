@@ -19,7 +19,7 @@ search field.
 
 ## Synopsis
 ```swift
-import Kanna
+import Carter
 
 let url = URL(string: url)!
 do {
