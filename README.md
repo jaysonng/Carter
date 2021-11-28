@@ -2,7 +2,7 @@
 
 Carter is a modern Swift Library to receive metadata and Open Graph information from URLs. 
 \
-Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina) Library.
+Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina) Library. Built on top of the Kanna Libraray
 
 ## Installation
 
@@ -15,6 +15,23 @@ search field.
 ## Requirements
 - Swift 5.5
 - iOS 15
+
+
+## Synopsis
+```swift
+import Kanna
+
+let url = URL(string: url)!
+do {
+
+    let urlInformation = try await url.carter.getURLInformation()
+    // Do stuff here with the URLInformation object
+    
+} catch let error as CarterError {
+    // No URLInformation object retrieved.
+    print(error.description)
+}
+```
 
 
 ## Bonus
