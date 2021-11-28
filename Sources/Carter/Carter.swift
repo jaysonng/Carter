@@ -15,8 +15,8 @@ private typealias CarterURLSessionOutput = URLSession.DataTaskPublisher.Output
 final public class Carter {
     
     public enum Mode {
-        case withHTTPResponse
-        case withoutHTTPResponse
+        case basic
+        case byURL
     }
     
     // MARK: ---------------  Properties  ---------------
@@ -26,7 +26,7 @@ final public class Carter {
     
     
     // MARK: ---------------  Init  ---------------
-    /// Carter must be initialized with a URL
+    /// Carter MUST be initialized with a URL
     init(_ url: URL) {
         self.url = url
     }
@@ -34,12 +34,12 @@ final public class Carter {
     // MARK: --------------- Methods ---------------
     /// The main method to pull information from a given URL
     /// - returns URLInformation object from url
-    public func getURLInformation(_ mode: Carter.Mode = .withHTTPResponse) async throws -> URLInformation? {
+    public func getURLInformation(_ mode: Carter.Mode = .basic) async throws -> URLInformation? {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URLInformation, Error>) in
             
             switch mode {
-            case .withHTTPResponse:
-                getURLInformationWithHTTPResponse() { result in
+            case .basic:
+                getURLInformationBasic() { result in
                     switch result {
                     case .success(let urlInformation):
                         continuation.resume(returning: urlInformation)
@@ -50,8 +50,8 @@ final public class Carter {
                     }
                 }
                 
-            case .withoutHTTPResponse:
-                getURLInformationWithoutHTTPResponse() { result in
+            case .byURL:
+                getURLInformationByURL(url) { result in
                     
                     switch result {
                     case .success(let urlInformation):
@@ -67,12 +67,77 @@ final public class Carter {
             
         }
     }
+    
+    /// Called by default, with HTTPResponse bound to URLInformation object
+    private func getURLInformationBasic(completion: @escaping InformationCompletionHandler) {
+        
+        subscription = urlSessionPublisher(for: url)
+            .sink(receiveCompletion: { sinkCompletion in
+                print("Sink received completion: \(sinkCompletion)")
+                switch sinkCompletion {
+                case .failure(let error):
+                    print("Error:", error)
+                    completion(.failure(CarterError.failedToGetURLInformation))
+                case .finished:
+                    print("----------Done pulling URL Data----------")
+                }
+                
+            }, receiveValue: { [self] data, response in
+                //print("Retrieved data of size \(data.count), response = \(response)")
+                let response = response as! HTTPURLResponse
+                if response.statusCode < 200 || response.statusCode >= 300 {
+                    //We don't have a valid response, we end it here! If we don't have a response at all, we will just continue
+                    completion(.failure(CarterError.failedToGetURLInformation))
+                } else {
+                    Task {
+                        do {
+                            var html: HTMLDocument? = nil
+                            html = try await HTMLHelper(html: data, encoding: .utf8)
+                            self.urlInformation = URLInformation(originalURL: self.url, url: self.url, html: html, response: response)
+                            
+                            if let urlInfo = urlInformation {
+                                dump(self.urlInformation)
+                                completion(.success(urlInfo))
+                            } else {
+                                completion(.failure(CarterError.failedToGetURLInformation))
+                            }
+                        } catch {
+                            completion(.failure(CarterError.failedToGetURLInformation))
+                        }
+                    }
+                    
+                    
+                    
+                }
+            })
+    }
+    
+    /// Returns URLInformation withoutHTTPResponse.
+    /// From testing, this is more unreliable and may fail based on the developer of the website.
+    private func getURLInformationByURL(_ url: URL, completion: @escaping InformationCompletionHandler) {
+        var html: HTMLDocument? = nil
+        do {
+            html = try HTML(url: url, encoding: .utf8)
+            self.urlInformation = URLInformation(originalURL: self.url, url: self.url, html: html)
+            
+            if let urlInfo = urlInformation {
+                dump(self.urlInformation)
+                completion(.success(urlInfo))
+            } else {
+                completion(.failure(CarterError.failedToGetURLInformation))
+            }
+            
+        } catch {
+            print(error.localizedDescription)
+            completion(.failure(CarterError.failedToGetURLInformation))
+        }
+    }
 }
 
 
 // MARK: ---------------  Helpers  ---------------
 extension Carter {
-    
+
     /// URLSession Publisher to receive URLSession.DataTaskPublisher.Output
     private func urlSessionPublisher(for url: URL) -> AnyPublisher<CarterURLSessionOutput, Error> {
         
@@ -99,70 +164,44 @@ extension Carter {
             .eraseToAnyPublisher()
     }
     
-    /// Called by default, with HTTPResponse bound to URLInformation object
-    private func getURLInformationWithHTTPResponse(completion: @escaping InformationCompletionHandler) {
+    private func HTMLHelper(html: Data, encoding: String.Encoding) async throws -> HTMLDocument? {
+        var htmlStr = ""
         
-        subscription = urlSessionPublisher(for: url)
-            .sink(receiveCompletion: { sinkCompletion in
-                print("Sink received completion: \(sinkCompletion)")
-                switch sinkCompletion {
-                case .failure(let error):
-                    print("Error:", error)
-                    completion(.failure(CarterError.failedToGetURLInformation))
-                case .finished:
-                    print("Done pulling URL Data")
-                }
-                
-            }, receiveValue: { [self] data, response in
-                //print("Retrieved data of size \(data.count), response = \(response)")
-                let response = response as! HTTPURLResponse
-                if response.statusCode < 200 || response.statusCode >= 300 {
-                    //We don't have a valid response, we end it here! If we don't have a response at all, we will just continue
-                    completion(.failure(CarterError.failedToGetURLInformation))
-                } else {
-                    var html: HTMLDocument? = nil
-                    do {
-                        html = try HTML(html: data, encoding: .utf8)
-                    } catch {
-                        completion(.failure(CarterError.failedToGetURLInformation))
-                    }
-                    
-                    self.urlInformation = URLInformation(originalURL: self.url, url: self.url, html: html, response: response)
-                    
-                    if let urlInfo = urlInformation {
-                        dump(self.urlInformation)
-                        completion(.success(urlInfo))
-                    } else {
-                        completion(.failure(CarterError.failedToGetURLInformation))
-                    }
-                    
-                }
-            })
-    }
-    
-    
-    /// Returns URLInformation withoutHTTPResponse.
-    private func getURLInformationWithoutHTTPResponse(completion: @escaping InformationCompletionHandler) {
-        var html: HTMLDocument? = nil
-        do {
-            html = try HTML(url: url, encoding: .utf8)
-            self.urlInformation = URLInformation(originalURL: self.url, url: self.url, html: html)
+        // 1. Get the string data
+        if let str = String(data: html, encoding: encoding) {
+            htmlStr = str
             
-            if let urlInfo = urlInformation {
-                dump(self.urlInformation)
-                completion(.success(urlInfo))
-            } else {
-                completion(.failure(CarterError.failedToGetURLInformation))
-                //throw CarterError.failedToGetURLInformation
+        // 2. We try .ascii as a backup if encoding fails.
+        } else if let str = String(data: html, encoding: .ascii) {
+            htmlStr = str
+        } else {
+            throw CarterError.failedToGetURLInformation
+        }
+    
+        // 2. Call Kanna's HTML parser with encoding falling back to utf8 encoding if it fails.
+        do {
+            do {
+                let html = try HTML(html: htmlStr, encoding: encoding)
+                return html
+            } catch {
+                do {
+                    // Last resort
+                    let html = try HTML(html: htmlStr, encoding: .utf8)
+                    return html
+                } catch {
+                    throw CarterError.failedToGetURLInformation
+                }
             }
             
         } catch {
-            print(error.localizedDescription)
-            completion(.failure(CarterError.failedToGetURLInformation))
-            //throw CarterError.failedToGetURLInformation
+            throw CarterError.failedToGetURLInformation
         }
+
     }
+
+    
 }
+
 
 // MARK: ---------------  Extensions  ---------------
 extension URL {

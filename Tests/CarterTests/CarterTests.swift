@@ -11,13 +11,14 @@ final class CarterTests: XCTestCase {
         case gmanetwork = "https://www.gmanetwork.com/news/balitambayan/chikamuna/812236/bts-nag-perform-ng-butter-habang-traffic-sa-intersection-sa-l-a/story/?just_in"
         case inquirer = "https://newsinfo.inquirer.net/1520253/concerned-by-new-variant-asian-countries-move-to-tighten-covid-measures?utm_source=gallery&utm_medium=direct"
         case philStar = "https://www.philstar.com/headlines/2021/11/26/2143993/philippines-loosens-borders-coronavirus-cases-continue-drop"
-        //case manilabulletin
+        case manilabulletin =
+            "https://mb.com.ph/2021/11/27/ph-logs-below-1k-covid-19-cases-for-3rd-straight-day/"
         case badUrl =
                 "https://www.gmanetwork.com/news/balitambayan/chikamuna/81223/bts-nag-perntersection-sa-l-a/story/?just_in"
         
     }
     
-    let url = URL(string: URLs.badUrl.rawValue)!
+    let url = URL(string: URLs.manilabulletin.rawValue)!
     
     var subscription: AnyCancellable?
     
@@ -27,31 +28,44 @@ final class CarterTests: XCTestCase {
                                          qos: .default,
                                          attributes: .concurrent)
     
-    func test() async throws {
+    func testBasic() async throws {
         do {
             let urlInfo = try await url.carter.getURLInformation()
-            print("urlInfo: ", urlInfo?.title)
+//            print("urlInfo: ", urlInfo?.title)
         } catch let error as CarterError {
             print(error.description)
+            XCTAssertNil(error)
         }
     }
     
-    func testWithoutHTTPResponse() async throws {
+    func testByURL() async throws {
         do {
-            let urlInfo = try await url.carter.getURLInformation(.withoutHTTPResponse)
-            print("urlInfo: ", urlInfo?.title)
+            let urlInfo = try await url.carter.getURLInformation(.byURL)
         } catch let error as CarterError {
             print(error.description)
+            XCTAssertNil(error)
         }
     }
     
-    func testPhilStarEncodingAscii() async throws {
+    func testPhilStar() async throws {
         let url2 = URL(string: URLs.philStar.rawValue)!
         do {
             let urlInfo = try await url2.carter.getURLInformation()
-            print("urlInfo: ", urlInfo?.title)
         } catch let error as CarterError {
             print(error.description)
+            XCTAssertNil(error)
+        }
+    }
+    
+    // This test will fail as philstar website has bad encoding.
+    // as of 11/28/2021
+    func testPhilStarByURL() async throws {
+        let url2 = URL(string: URLs.philStar.rawValue)!
+        do {
+            let urlInfo = try await url2.carter.getURLInformation(.byURL)
+        } catch let error as CarterError {
+            print(error.description)
+            XCTAssertNotNil(error)
         }
     }
     
