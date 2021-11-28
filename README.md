@@ -22,19 +22,22 @@ search field.
 import Kanna
 
 let url = URL(string: url)!
+
 do {
 
     let urlInformation = try await url.carter.getURLInformation()
     // Do stuff here with the URLInformation object
     
 } catch let error as CarterError {
+
     // No URLInformation object retrieved.
     print(error.description)
+    
 }
 ```
 
 
-## Bonus
+## Stargate SG-1
 "You know, you blow up one sun and suddenly everyone expects you to walk on water."
 \
 &mdash; Lt. Col. Samantha Carter 

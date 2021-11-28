@@ -13,12 +13,15 @@ final class CarterTests: XCTestCase {
         case philStar = "https://www.philstar.com/headlines/2021/11/26/2143993/philippines-loosens-borders-coronavirus-cases-continue-drop"
         case manilabulletin =
             "https://mb.com.ph/2021/11/27/ph-logs-below-1k-covid-19-cases-for-3rd-straight-day/"
+        
+        case cnnPH = "https://cnnphilippines.com/news/2021/11/27/Govt-mulls-possible-expansion-Omicron-travel-ban.html"
+        
         case badUrl =
                 "https://www.gmanetwork.com/news/balitambayan/chikamuna/81223/bts-nag-perntersection-sa-l-a/story/?just_in"
         
     }
     
-    let url = URL(string: URLs.manilabulletin.rawValue)!
+    let url = URL(string: URLs.cnnPH.rawValue)!
     
     var subscription: AnyCancellable?
     

@@ -38,7 +38,9 @@ public class URLInformation: Equatable {
     
     /// The contents of the og:title tag of the link.
     /// If og:title is not present, there is a fallback to the `<title>` html tag.
+    //    private var _title: String?
     public var title: String?
+    //    { _title }
     
     /// The contents of the og:description tag of the link.
     /// If og:description is not present, there is a fallback to the `<meta type="description">` html tag.
@@ -67,7 +69,11 @@ public class URLInformation: Equatable {
     //    public var twitterCard: TwitterCardInformation?
     
     /// The type of the content behind the URL, this is determented (in order) by the `og:type` tag or mimetype
+    //private var _type: URLInformationType
     public var type: URLInformationType
+    //    { _type }
+    
+    
     
     /// The contents of the og:site_name tag of the link.
     /// If og:site_name is not present, there is a fallback to the `<title>` html tag.
@@ -80,11 +86,12 @@ public class URLInformation: Equatable {
     /// The contents of the `keywords` tag of the link.
     /// need to see if we can get <script type="text/javascript"> data
     public var keywords: String?
-
+    
     /// The HTTPResponse from pulling the URL
     public var httpURLResponse: HTTPURLResponse?
-
     
+    
+    // MARK: ---------------  Inits  ---------------
     /// Create a new instance of URLInformation with the given URL and title
     ///
     /// - Parameters:
@@ -96,142 +103,23 @@ public class URLInformation: Equatable {
         self.originalURL = originalURL
         self.url = url
         self.httpURLResponse = response
-
+        
+        // Set defaults
+        self.type = .website
+        
         if let html = html {
             
-            let test = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content")
-            dump("test:======= \(test) ============")
+            processHTML(html)
             
-            /// Type
-            /// og:type
-            if let typeString = html.xpath("//meta[(@property|@name)=\"og:type\"]/@content").first?.text,
-               let type       = URLInformationType.type(for: typeString)
-            {
-                self.type = type
-            } else {
-                self.type = .website
-            }
-            
-            /// Title
-            /// og:title
-            if let title = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content").first?.text
-            {
-                self.title = title
-            } else if let title = html.title {
-                self.title = title
-            } else {
-                self.title = nil
-            }
-            
-            /// DescriptionText
-            /// og:description
-            if let descriptionText = html.xpath("//meta[@property=\"og:description\"]/@content").first?.text {
-                self.descriptionText = descriptionText
-            } else if let descriptionText = html.xpath("//meta[(@property|@name)=\"description\"]/@content").first?.text {
-                self.descriptionText = descriptionText
-            }
-            
-            if let urlString = html.xpath("//meta[(@property|@name)=\"og:url\"]/@content").first?.text,
-               let url = URL(string: urlString) {
-                self.url = url
-            }
-            
-            
-            if let imageURLString = html.xpath("//meta[(@property|@name)=\"og:image:secure_url\"]/@content").first?.text {
-                self.imageURL = URL(string: imageURLString, relativeTo: url)
-            } else if let imageURLString = html.xpath("//meta[(@property|@name)=\"og:image\"]/@content").first?.text {
-                self.imageURL = URL(string: imageURLString, relativeTo: url)
-            } else if let imageURLString = html.xpath("//meta[(@property|@name)=\"thumbnail\"]/@content").first?.text {
-                self.imageURL = URL(string: imageURLString, relativeTo: url)
-            }
-            
-            if let imageWidthString = html.xpath("//meta[(@property|@name)=\"og:image:width\"]/@content").first?.text,
-               let imageHeightString = html.xpath("//meta[(@property|@name)=\"og:image:height\"]/@content").first?.text {
-                let imageWidth: CGFloat = CGFloat(Float(imageWidthString) ?? 0)
-                let imageHeight: CGFloat = CGFloat(Float(imageHeightString) ?? 0)
-                if imageWidth > 0 && imageHeight > 0 {
-                    self.imageSize = CGSize(width: imageWidth, height: imageHeight)
-                }
-            }
-            
-            if let faviconURLString = html.xpath("/html/head/link[@rel=\"shortcut icon\"]/@href").first?.text {
-                self.faviconURL = URL(string: faviconURLString, relativeTo: url)
-            } else if let faviconURLString = html.xpath("/html/head/link[@rel=\"icon\"]/@href").first?.text {
-                self.faviconURL = URL(string: faviconURLString, relativeTo: url)
-            }
-            
-            if let appleTouchIconURLString = html.xpath("/html/head/link[@rel=\"apple-touch-icon\" and not(@sizes)]/@href").first?.text {
-                self.appleTouchIconURL = URL(string: appleTouchIconURLString, relativeTo: url)
-            } else if let appleTouchIconURLString = html.xpath("/html/head/link[@rel=\"apple-touch-icon\" and @sizes=\"180x180\"]/@href").first?.text {
-                self.appleTouchIconURL = URL(string: appleTouchIconURLString, relativeTo: url)
-            } else if let appleTouchIconURLString = html.xpath("/html/head/link[@rel=\"apple-touch-icon-precomposed\" and not(@sizes)]/@href").first?.text {
-                self.appleTouchIconURL = URL(string: appleTouchIconURLString, relativeTo: url)
-            }
-            
-            //            self.twitterCard = TwitterCardInformation(html: html)
-            
-            
-            if let publishedDateString = html.xpath("//meta[@property=\"article:published_time\"]/@content ").first?.text {
-                self.publishDate = publishedDateString
-            } else if let publishedDateString = html.xpath("//meta[@property=\"og:pubdate\"]/@content ").first?.text {
-                self.publishDate = publishedDateString
-            } else if let publishedDateString = html.xpath("//meta[@property=\"pubdate\"]/@content ").first?.text {
-                self.publishDate = publishedDateString
-            }
-            //            else if let publishedDateString = html.xpath("//script[@type=\"application/ld+json\"]/@content ").first?.text {
-            //            print("philstar: \(publishedDateString)")
         } else {
+            
             //If the HTML is not available, we only determine the type based on the mime type
             if let mimeType = response?.mimeType {
                 self.type = URLInformationType.type(forMimeType: mimeType)
-            } else {
-                self.type = .website
             }
             self.title = nil
             self.descriptionText = nil
         }
-    }
-    
-    
-    
-    
-    public required init?(coder aDecoder: NSCoder) {
-        guard let originalURL = aDecoder.decodeObject(forKey: "originalURL") as? URL, let url = aDecoder.decodeObject(forKey: "url") as? URL else {
-            return nil
-        }
-        self.originalURL = originalURL
-        self.url = url
-        self.title = aDecoder.decodeObject(forKey: "title") as? String
-        self.descriptionText = aDecoder.decodeObject(forKey: "description") as? String
-        self.imageURL = aDecoder.decodeObject(forKey: "imageURL") as? URL
-        self.imageSize = aDecoder.decodeCGSize(forKey: "imageSize")
-        self.appleTouchIconURL = aDecoder.decodeObject(forKey: "appleTouchIconURL") as? URL
-        self.faviconURL = aDecoder.decodeObject(forKey: "faviconURL") as? URL
-        //        self.twitterCard = aDecoder.decodeObject(forKey: "twitterCard") as? TwitterCardInformation
-        if let typeString = aDecoder.decodeObject(forKey: "type") as? String {
-            self.type = URLInformationType(rawValue: typeString) ?? URLInformationType.website
-        } else {
-            self.type = URLInformationType.website
-        }
-        
-        
-        // Not sure what this is for.
-        // self.publishedDate = aDecoder.decodeObject(forKey: "pubdate") as? Date
-        
-    }
-    
-    public func encode(with aCoder: NSCoder) {
-        aCoder.encode(self.originalURL, forKey: "originalURL")
-        aCoder.encode(self.url, forKey: "url")
-        aCoder.encode(self.title, forKey: "title")
-        aCoder.encode(self.descriptionText, forKey: "description")
-        aCoder.encode(self.imageURL, forKey: "imageURL")
-        aCoder.encode(self.imageSize, forKey: "imageSize")
-        aCoder.encode(self.appleTouchIconURL, forKey: "appleTouchIconURL")
-        aCoder.encode(self.faviconURL, forKey: "faviconURL")
-        //        aCoder.encode(self.twitterCard, forKey: "twitterCard")
-        aCoder.encode(self.type.rawValue, forKey: "type")
-        
     }
     
     public static func ==(lhs: URLInformation, rhs: URLInformation) -> Bool {
@@ -241,3 +129,93 @@ public class URLInformation: Equatable {
 }
 
 
+extension URLInformation {
+    
+    func processHTML(_ html: HTMLDocument) {
+        
+        let test = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content")
+        dump("test:======= \(test) ============")
+        
+        // MARK: ---------------  Type  ---------------
+        /// og:type
+        if let typeString = html.xpath("//meta[(@property|@name)=\"og:type\"]/@content").first?.text,
+           let type       = URLInformationType.type(for: typeString) {
+            self.type =  type
+        } else {
+            self.type =  .website
+        }
+        
+        
+        // MARK: ---------------  Title  ---------------
+        /// og:title
+        if let title = html.xpath("//meta[(@property|@name)=\"og:title\"]/@content").first?.text {
+            self.title = title
+        } else if let title = html.title {
+            self.title = title
+        } else {
+            self.title = nil
+        }
+        
+        
+        // MARK: ---------------  Description  ---------------
+        /// og:description
+        if let descriptionText = html.xpath("//meta[@property=\"og:description\"]/@content").first?.text {
+            self.descriptionText = descriptionText
+        } else if let descriptionText = html.xpath("//meta[(@property|@name)=\"description\"]/@content").first?.text {
+            self.descriptionText = descriptionText
+        }
+        
+        
+        // MARK: ---------------  URL  ---------------
+        if let urlString = html.xpath("//meta[(@property|@name)=\"og:url\"]/@content").first?.text,
+           let url = URL(string: urlString) {
+            self.url = url
+        }
+        
+        // MARK: ---------------  Image URL  ---------------
+        if let imageURLString = html.xpath("//meta[(@property|@name)=\"og:image:secure_url\"]/@content").first?.text {
+            self.imageURL = URL(string: imageURLString, relativeTo: url)
+        } else if let imageURLString = html.xpath("//meta[(@property|@name)=\"og:image\"]/@content").first?.text {
+            self.imageURL = URL(string: imageURLString, relativeTo: url)
+        } else if let imageURLString = html.xpath("//meta[(@property|@name)=\"thumbnail\"]/@content").first?.text {
+            self.imageURL = URL(string: imageURLString, relativeTo: url)
+        }
+        
+        // MARK: ---------------  Image Size  ---------------
+        if let imageWidthString = html.xpath("//meta[(@property|@name)=\"og:image:width\"]/@content").first?.text,
+           let imageHeightString = html.xpath("//meta[(@property|@name)=\"og:image:height\"]/@content").first?.text {
+            let imageWidth: CGFloat = CGFloat(Float(imageWidthString) ?? 0)
+            let imageHeight: CGFloat = CGFloat(Float(imageHeightString) ?? 0)
+            if imageWidth > 0 && imageHeight > 0 {
+                self.imageSize = CGSize(width: imageWidth, height: imageHeight)
+            }
+        }
+        
+        // MARK: ---------------  Favicon  ---------------
+        if let faviconURLString = html.xpath("/html/head/link[@rel=\"shortcut icon\"]/@href").first?.text {
+            self.faviconURL = URL(string: faviconURLString, relativeTo: url)
+        } else if let faviconURLString = html.xpath("/html/head/link[@rel=\"icon\"]/@href").first?.text {
+            self.faviconURL = URL(string: faviconURLString, relativeTo: url)
+        }
+        
+        // MARK: ---------------  Apple Touch Icon  ---------------
+        if let appleTouchIconURLString = html.xpath("/html/head/link[@rel=\"apple-touch-icon\" and not(@sizes)]/@href").first?.text {
+            self.appleTouchIconURL = URL(string: appleTouchIconURLString, relativeTo: url)
+        } else if let appleTouchIconURLString = html.xpath("/html/head/link[@rel=\"apple-touch-icon\" and @sizes=\"180x180\"]/@href").first?.text {
+            self.appleTouchIconURL = URL(string: appleTouchIconURLString, relativeTo: url)
+        } else if let appleTouchIconURLString = html.xpath("/html/head/link[@rel=\"apple-touch-icon-precomposed\" and not(@sizes)]/@href").first?.text {
+            self.appleTouchIconURL = URL(string: appleTouchIconURLString, relativeTo: url)
+        }
+        
+        //            self.twitterCard = TwitterCardInformation(html: html)
+        
+        // MARK: ---------------  Publish Date  ---------------
+        if let publishedDateString = html.xpath("//meta[@property=\"article:published_time\"]/@content ").first?.text {
+            self.publishDate = publishedDateString
+        } else if let publishedDateString = html.xpath("//meta[@property=\"og:pubdate\"]/@content ").first?.text {
+            self.publishDate = publishedDateString
+        } else if let publishedDateString = html.xpath("//meta[@property=\"pubdate\"]/@content ").first?.text {
+            self.publishDate = publishedDateString
+        }
+    }
+}
