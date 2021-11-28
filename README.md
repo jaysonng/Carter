@@ -1,6 +1,6 @@
 # Carter
 
-Carter is a modern Swift Library to receive metadata and Open Graph information from URLs. 
+Carter is a simple Swift Library for retrieving  Open Graph or metadata information from websites. 
 \
 Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina) Library. Built on top of the Kanna Libraray
 
