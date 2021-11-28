@@ -2,7 +2,7 @@
 
 Carter is a simple Swift Library for retrieving  Open Graph or metadata information from websites. 
 \
-Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina) Library. Built on top of the Kanna Libraray
+Based on [Awkward/Ocarina](https://github.com/awkward/Ocarina) Library.
 
 ## Installation
 
@@ -15,6 +15,7 @@ search field.
 ## Requirements
 - Swift 5.5
 - iOS 15
+- Kanna
 
 
 ## Synopsis
