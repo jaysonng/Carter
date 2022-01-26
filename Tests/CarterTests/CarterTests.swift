@@ -21,7 +21,7 @@ final class CarterTests: XCTestCase {
         
     }
     
-    let url = URL(string: URLs.cnnPH.rawValue)!
+    let url = URL(string: URLs.inquirer.rawValue)!
     
     var subscription: AnyCancellable?
     
@@ -53,7 +53,8 @@ final class CarterTests: XCTestCase {
     func testPhilStar() async throws {
         let url2 = URL(string: URLs.philStar.rawValue)!
         do {
-            let urlInfo = try await url2.carter.getURLInformation()
+            //let urlInfo = try await url2.carter.getURLInformation()
+            let urlInfo = try await url2.carter(.article).getURLInformation()
         } catch let error as CarterError {
             print(error.description)
             XCTAssertNil(error)
@@ -65,10 +66,10 @@ final class CarterTests: XCTestCase {
     func testPhilStarByURL() async throws {
         let url2 = URL(string: URLs.philStar.rawValue)!
         do {
-            let urlInfo = try await url2.carter.getURLInformation(.byURL)
+            let urlInfo = try await url2.carter[.article].getURLInformation()
         } catch let error as CarterError {
             print(error.description)
-            XCTAssertNotNil(error)
+            XCTAssertNotNil(error) // XCTAssertNotNil
         }
     }
     

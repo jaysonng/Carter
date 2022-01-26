@@ -12,6 +12,7 @@ import SwiftUI
 public typealias InformationCompletionHandler = ((Result<URLInformation, CarterError>) -> ())
 private typealias CarterURLSessionOutput = URLSession.DataTaskPublisher.Output
 
+/// A class that scrapes OG or Meta data from a given URL
 final public class Carter {
     
     public enum Mode {
@@ -22,18 +23,21 @@ final public class Carter {
     // MARK: ---------------  Properties  ---------------
     var url: URL
     var urlInformation: URLInformation?
+    var defaultType: URLInformationType
     private var subscription: AnyCancellable?
     
     
     // MARK: ---------------  Init  ---------------
-    /// Carter MUST be initialized with a URL
-    init(_ url: URL) {
+    // Carter MUST be initialized with a URL
+    init(_ url: URL, defaultType: URLInformationType = .website) {
         self.url = url
+        self.defaultType = defaultType
+        print("defaultType is: ", defaultType)
     }
     
     // MARK: --------------- Methods ---------------
     /// The main method to pull information from a given URL
-    /// - returns URLInformation object from url
+    /// - returns: URLInformation object created with data scraped from the URL
     public func getURLInformation(_ mode: Carter.Mode = .basic) async throws -> URLInformation? {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URLInformation, Error>) in
             
@@ -50,9 +54,9 @@ final public class Carter {
                     }
                 }
                 
+                // Using .byURL has downsides. It currently does not handle wesites with wrong charset.
             case .byURL:
                 getURLInformationByURL(url) { result in
-                    
                     switch result {
                     case .success(let urlInformation):
                         continuation.resume(returning: urlInformation)
@@ -93,7 +97,7 @@ final public class Carter {
                         do {
                             var html: HTMLDocument? = nil
                             html = try await HTMLHelper(html: data, encoding: .utf8)
-                            self.urlInformation = URLInformation(originalURL: self.url, url: self.url, html: html, response: response)
+                            self.urlInformation = URLInformation(originalURL: self.url, url: self.url, html: html, response: response, defaultType: defaultType)
                             
                             if let urlInfo = urlInformation {
                                 dump(self.urlInformation)
@@ -112,8 +116,9 @@ final public class Carter {
             })
     }
     
-    /// Returns URLInformation withoutHTTPResponse.
+    /// Get URL information via Kanna's HTML(url: encoding)
     /// From testing, this is more unreliable and may fail based on the developer of the website.
+    /// - Returns: URLInformation object without HTTPResponse.
     private func getURLInformationByURL(_ url: URL, completion: @escaping InformationCompletionHandler) {
         var html: HTMLDocument? = nil
         do {
@@ -137,7 +142,7 @@ final public class Carter {
 
 // MARK: ---------------  Helpers  ---------------
 extension Carter {
-
+    
     /// URLSession Publisher to receive URLSession.DataTaskPublisher.Output
     private func urlSessionPublisher(for url: URL) -> AnyPublisher<CarterURLSessionOutput, Error> {
         
@@ -164,6 +169,7 @@ extension Carter {
             .eraseToAnyPublisher()
     }
     
+    /// Private HTMLHelper to check if we properly receive an ecoded html as a String
     private func HTMLHelper(html: Data, encoding: String.Encoding) async throws -> HTMLDocument? {
         var htmlStr = ""
         
@@ -171,13 +177,13 @@ extension Carter {
         if let str = String(data: html, encoding: encoding) {
             htmlStr = str
             
-        // 2. We try .ascii as a backup if encoding fails.
+            // 2. We try .ascii as a backup if encoding fails.
         } else if let str = String(data: html, encoding: .ascii) {
             htmlStr = str
         } else {
             throw CarterError.failedToGetURLInformation
         }
-    
+        
         // 2. Call Kanna's HTML parser with encoding falling back to utf8 encoding if it fails.
         do {
             do {
@@ -196,18 +202,29 @@ extension Carter {
         } catch {
             throw CarterError.failedToGetURLInformation
         }
-
+        
     }
-
     
+    
+    subscript(type: URLInformationType) -> Carter {
+        return Carter(url, defaultType: type)
+    }
 }
 
 
 // MARK: ---------------  Extensions  ---------------
 extension URL {
+    
     /// The Carter object for this URL.
     /// Can be used to request information for this URL
+    /// - returns: Carter Object
     public var carter: Carter {
         return Carter(self)
+    }
+    
+    /// If you need to set the default type away from .website, you can set it by calling carter(.type)
+    /// - returns: Carter Object
+    public func carter(_ type: URLInformationType = .website) -> Carter {
+        return Carter(self, defaultType: type)
     }
 }
