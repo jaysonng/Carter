@@ -48,7 +48,6 @@ final public class Carter {
                     case .success(let urlInformation):
                         continuation.resume(returning: urlInformation)
                     case .failure(let error):
-                        //                        completion(.failure(CarterError.failedToGetURLInformation))
                         print("Error getting URLInformation with HTTPResponse", error.localizedDescription)
                         continuation.resume(throwing: CarterError.failedToGetURLInformation)
                     }
