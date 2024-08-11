@@ -8,6 +8,8 @@
 import Foundation
 import os.log
 
+@available(iOS 14.0, *)
+@available(macOS 11.0, *)
 extension Logger {
   private static var subsystem      = Bundle.main.bundleIdentifier!
   static let category               = "Carter"

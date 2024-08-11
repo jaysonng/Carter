@@ -10,9 +10,12 @@ import Kanna
 import SwiftUI
 
 public typealias InformationCompletionHandler = ((Result<URLInformation, CarterError>) -> ())
+
+@available(macOS 10.15, *)
 private typealias CarterURLSessionOutput = URLSession.DataTaskPublisher.Output
 
 /// A class that scrapes OG or Meta data from a given URL
+@available(macOS 10.15, *)
 final public class Carter {
     
     public enum Mode {
@@ -140,6 +143,7 @@ final public class Carter {
 
 
 // MARK: ---------------  Helpers  ---------------
+@available(macOS 10.15, *)
 extension Carter {
     
     /// URLSession Publisher to receive URLSession.DataTaskPublisher.Output
@@ -212,6 +216,7 @@ extension Carter {
 
 
 // MARK: ---------------  Extensions  ---------------
+@available(macOS 10.15, *)
 extension URL {
     
     /// The Carter object for this URL.
