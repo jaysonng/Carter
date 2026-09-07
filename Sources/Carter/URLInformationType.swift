@@ -7,9 +7,8 @@
 //
 
 import Foundation
-import AVFoundation
 
-public enum URLInformationType: String {
+public enum URLInformationType: String, Sendable, CaseIterable {
     
     case article                        = "article"
     case book                           = "book"
@@ -109,28 +108,26 @@ extension URLInformationType {
         }
     }
     
-    static func type(forMimeType mimeType: String) -> URLInformationType {
-        let audioFileMimeTypes = AVURLAsset.audiovisualMIMETypes().filter({ (type) -> Bool in
-            return type.hasPrefix("audio/")
-        })
-        
-        if AVURLAsset.audiovisualMIMETypes().contains(mimeType) && !mimeType.hasPrefix("text/") {
-            //We have an audio or video URL!
-            
-            if audioFileMimeTypes.contains(mimeType) {
-                return URLInformationType.fileAudio
-            } else {
-                return URLInformationType.fileVideo
-            }
-        } else if self.imageFileMimeTypes.contains(mimeType) {
-            return URLInformationType.fileImage
-        } else if self.documentFileMimeTypes.contains(mimeType) {
-            return URLInformationType.fileDocument
-        } else if self.htmlFileMimeTypes.contains(mimeType) {
-            return URLInformationType.website
-        } else if self.archiveFileMimeTypes.contains(mimeType) {
-            return URLInformationType.fileArchive
-        }
-        return URLInformationType.fileOther
+    /// Audio and video MIME types, by prefix.
+    ///
+    /// 1.x asked `AVURLAsset.audiovisualMIMETypes()` for this. That is
+    /// AVFoundation — Apple-only — and it is the single reason a link-preview
+    /// parser could not compile on a Linux server. The question being asked was
+    /// only ever "does this start with audio/ or video/", which needs no
+    /// framework and gives the same answer everywhere.
+    public static func type(forMimeType mimeType: String) -> URLInformationType {
+        let mime = mimeType.lowercased()
+            .components(separatedBy: ";").first?
+            .trimmingCharacters(in: .whitespaces) ?? mimeType.lowercased()
+
+        if mime.hasPrefix("audio/") { return .fileAudio }
+        if mime.hasPrefix("video/") { return .fileVideo }
+        if mime.hasPrefix("image/") { return .fileImage }
+
+        if self.imageFileMimeTypes.contains(mime)    { return .fileImage }
+        if self.documentFileMimeTypes.contains(mime) { return .fileDocument }
+        if self.htmlFileMimeTypes.contains(mime)     { return .website }
+        if self.archiveFileMimeTypes.contains(mime)  { return .fileArchive }
+        return .fileOther
     }
 }

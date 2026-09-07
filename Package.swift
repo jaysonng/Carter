@@ -1,29 +1,28 @@
-// swift-tools-version:5.5
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 let package = Package(
     name: "Carter",
-    platforms: [.iOS("13.0")],
+    // Carter is CROSS-PLATFORM as of 2.0. It runs in an iOS app and in a
+    // Linux server process (Vapor), because link ingestion belongs on the
+    // server: a publisher whitelist enforced only on the client is not
+    // enforcement — anyone can call the cloud function directly.
+    //
+    // iOS 14 / macOS 11 are the floors for os.Logger, which the logging shim
+    // uses on Apple platforms. Linux has no platform floor to declare.
+    platforms: [.iOS(.v14), .macOS(.v11), .tvOS(.v14), .watchOS(.v7)],
     products: [
-        // Products define the executables and libraries a package produces, and make them visible to other packages.
-        .library(
-            name: "Carter",
-            targets: ["Carter"]),
+        .library(name: "Carter", targets: ["Carter"]),
     ],
     dependencies: [
-        // Dependencies declare other packages that this package depends on.
+        // Kanna wraps libxml2 and builds on Linux via pkgConfig "libxml-2.0".
+        // A Linux host/image must provide libxml2-dev.
         .package(url: "https://github.com/tid-kijyun/Kanna", from: "5.0.0"),
     ],
     targets: [
-        // Targets are the basic building blocks of a package. A target can define a module or a test suite.
-        // Targets can depend on other targets in this package, and on products in packages this package depends on.
-        .target(
-            name: "Carter",
-            dependencies: ["Kanna"]),
-        .testTarget(
-            name: "CarterTests",
-            dependencies: ["Carter"]),
+        .target(name: "Carter", dependencies: ["Kanna"]),
+        .testTarget(name: "CarterTests", dependencies: ["Carter"]),
     ]
 )

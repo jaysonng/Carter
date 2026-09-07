@@ -34,3 +34,10 @@ xcuserdata/
 ## Playgrounds
 timeline.xctimeline
 playground.xcworkspace
+
+## SwiftPM
+# `.build/` — NOT covered by `build/` above, which is why SwiftPM's output was
+# nearly committed with this change.
+.build/
+# A library should not pin its consumers' dependency graph.
+Package.resolved
