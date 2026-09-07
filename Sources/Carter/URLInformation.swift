@@ -70,6 +70,22 @@ public struct URLInformation: Equatable, Sendable {
     /// instead of every consumer re-deriving it from a list of formats.
     public let publishedAt: Date?
 
+    /// When the article was last edited, when the page says so.
+    /// Kept SEPARATE from `publishedAt`: 1.x preferred `article:modified_time`
+    /// for its single date, so a lightly-corrected old story looked brand new
+    /// in any feed sorted by date.
+    public let modifiedAt: Date?
+
+    /// Tags, structured. Gathered from schema.org `keywords`, `article:tag`
+    /// (repeatable), `news_keywords` and the `keywords` meta tag — deduped
+    /// case-insensitively, order preserved. `keywords` remains the raw
+    /// comma-joined string for 1.x callers.
+    public let tags: [String]
+
+    /// The publisher's own name for itself (`schema.org` publisher, else
+    /// `og:site_name`).
+    public let publisherName: String?
+
     public let section: String?
     public let faviconURL: URL?
     public let appleTouchIconURL: URL?
@@ -116,13 +132,15 @@ extension URLInformation {
             self.siteName = nil; self.title = nil; self.author = nil
             self.descriptionText = nil; self.keywords = nil
             self.imageURL = nil; self.imageSize = nil
-            self.publishDate = nil; self.publishedAt = nil
+            self.publishDate = nil; self.publishedAt = nil; self.modifiedAt = nil
+            self.tags = []; self.publisherName = nil
             self.section = nil; self.faviconURL = nil; self.appleTouchIconURL = nil
             self.twitterCard = nil
             return
         }
 
         let meta = MetaReader(html: html)
+        let ld = JSONLD(html: html)
 
         // --- Address, decided BEFORE anything resolves against it -----------
         // Relative image/favicon URLs must resolve against a URL we trust.
@@ -152,25 +170,59 @@ extension URLInformation {
         }
 
         // --- Text -----------------------------------------------------------
+        // Precedence is deliberate: schema.org is what a news CMS populates
+        // properly, `og:` is the lowest common denominator every publisher
+        // emits a little of, and the `<title>` tag is the last resort.
         self.siteName = meta.content(forProperty: "og:site_name")
-        self.title = meta.content(forProperty: "og:title")
+        self.publisherName = ld?.publisher ?? meta.content(forProperty: "og:site_name")
+        self.title = ld?.headline
+            ?? meta.content(forProperty: "og:title")
             ?? meta.content(forProperty: "twitter:title")
             ?? html.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.author = meta.content(forProperty: "author")
+        // JSON-LD first: publishers often express the author as an @id
+        // reference into their own graph and omit the meta tag entirely.
+        self.author = ld?.author
+            ?? meta.content(forProperty: "author")
             ?? meta.content(forProperty: "article:author")
         self.descriptionText = meta.content(forProperty: "og:description")
+            ?? ld?.summary
             ?? meta.content(forProperty: "description")
             ?? meta.content(forProperty: "twitter:description")
-        self.keywords = meta.content(forProperty: "keywords") ?? meta.keywordsFromInlineScript()
-        self.section = meta.content(forProperty: "article:section")
+        self.section = ld?.section ?? meta.content(forProperty: "article:section")
+
+        // Tags, from every place a publisher might put them, deduped with
+        // order preserved. In one four-site sample each of these was the ONLY
+        // source on at least one site: JSON-LD keywords, the meta tag, and an
+        // inline script. Reading one of them is not enough.
+        var collected: [String] = ld?.keywords ?? []
+        collected += meta.contents(forProperty: "article:tag")
+        for source in [meta.content(forProperty: "news_keywords"),
+                       meta.content(forProperty: "keywords"),
+                       meta.keywordsFromInlineScript()] {
+            guard let source else { continue }
+            collected += source.components(separatedBy: ",")
+                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \"'\n\t")) }
+        }
+        var seen = Set<String>()
+        self.tags = collected.filter { tag in
+            let key = tag.lowercased()
+            guard !tag.isEmpty, !seen.contains(key) else { return false }
+            seen.insert(key); return true
+        }
+        // The 1.x contract: a raw comma-joined string.
+        self.keywords = self.tags.isEmpty ? nil : self.tags.joined(separator: ",")
 
         // --- Image ----------------------------------------------------------
         let base = finalURL   // resolve against where we actually are
-        self.imageURL = meta.url(forProperty: "og:image:secure_url", relativeTo: base)
+        var resolvedImage = meta.url(forProperty: "og:image:secure_url", relativeTo: base)
             ?? meta.url(forProperty: "og:image:url", relativeTo: base)
             ?? meta.url(forProperty: "og:image", relativeTo: base)
             ?? meta.url(forProperty: "twitter:image", relativeTo: base)
             ?? meta.url(forProperty: "thumbnail", relativeTo: base)
+        if resolvedImage == nil, let ldImage = ld?.imageURL {
+            resolvedImage = URL(string: ldImage, relativeTo: base)?.absoluteURL
+        }
+        self.imageURL = resolvedImage
 
         if let w = meta.content(forProperty: "og:image:width").flatMap(Double.init),
            let h = meta.content(forProperty: "og:image:height").flatMap(Double.init),
@@ -181,14 +233,23 @@ extension URLInformation {
         }
 
         // --- Dates ----------------------------------------------------------
-        let raw = meta.content(forProperty: "article:modified_time")
-            ?? meta.content(forProperty: "article:published_time")
-            ?? meta.content(forProperty: "og:updated_time")
-            ?? meta.content(forProperty: "og:pubdate")
-            ?? meta.content(forProperty: "pubdate")
-            ?? meta.content(forProperty: "date")
-        self.publishDate = raw
-        self.publishedAt = raw.flatMap { DateParsing.date(from: $0, ambiguousZone: ambiguousTimeZone) }
+        // PUBLISHED wins over MODIFIED. 1.x asked for modified_time first, so
+        // a story corrected years later sorted as if it were new.
+        // Written as a loop rather than a ?? chain: seven optional coalesces in
+        // one expression pushed the type-checker past its budget.
+        let publishedKeys = ["article:published_time", "og:pubdate", "pubdate",
+                             "date", "article:modified_time", "og:updated_time"]
+        var rawPublished: String? = ld?.published
+        for key in publishedKeys where rawPublished == nil {
+            rawPublished = meta.content(forProperty: key)
+        }
+        var rawModified: String? = ld?.modified
+        for key in ["article:modified_time", "og:updated_time"] where rawModified == nil {
+            rawModified = meta.content(forProperty: key)
+        }
+        self.publishDate = rawPublished
+        self.publishedAt = rawPublished.flatMap { DateParsing.date(from: $0, ambiguousZone: ambiguousTimeZone) }
+        self.modifiedAt = rawModified.flatMap { DateParsing.date(from: $0, ambiguousZone: ambiguousTimeZone) }
 
         // --- Icons ----------------------------------------------------------
         self.faviconURL = meta.url(forLinkRel: "shortcut icon", relativeTo: base)
@@ -218,6 +279,16 @@ struct MetaReader {
             .nilIfEmpty
     }
 
+    /// ALL values for a repeatable tag. `article:tag` legitimately appears
+    /// many times on one page; `content(forProperty:)` returns only the first.
+    func contents(forProperty property: String) -> [String] {
+        let escaped = property.replacingOccurrences(of: "\"", with: "")
+        let xpath = "//meta[(@property|@name)=\"\(escaped)\"]/@content"
+        return html.xpath(xpath).compactMap {
+            $0.text?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+    }
+
     func url(forProperty property: String, relativeTo base: URL? = nil) -> URL? {
         content(forProperty: property).flatMap { Self.resolve($0, base: base) }
     }
@@ -244,7 +315,12 @@ struct MetaReader {
     /// script whose text had `]` before `[` crashed the process with
     /// "Range requires lowerBound <= upperBound" — on attacker-controlled HTML.
     func keywordsFromInlineScript() -> String? {
-        for node in html.xpath("//script[@type=\"text/javascript\"]") {
+        // ALL script tags, not just type="text/javascript". Lazy-load plugins
+        // rewrite the attribute (WP Rocket ships type="text/rocketlazyloadscript"
+        // and moves the real type to data-rocket-type), and modern HTML omits
+        // it entirely since JavaScript is the default. Requiring the attribute
+        // silently lost the tags on any page using either.
+        for node in html.xpath("//script") {
             guard let text = node.text, text.contains("var keyword") else { continue }
             for statement in text.components(separatedBy: ";") {
                 guard statement.contains("var keyword"),

@@ -12,16 +12,15 @@ enum DateParsing {
 
     /// Timezone abbreviations that mean different things in different places.
     ///
-    /// This is not pedantry. inquirer.net stamps articles
-    /// `Fri, 04 Sep 2026 22:13:46 PST` meaning **Philippine** Standard Time
-    /// (UTC+8), while `DateFormatter` under `en_US_POSIX` reads PST as
-    /// **Pacific** Standard Time (UTC−8). That is a 16-hour error, which lands
-    /// the article on the wrong DAY — verified against that page, whose visible
-    /// byline reads "September 04, 2026" and whose `dateModified` is the next
-    /// morning, both of which only hold under UTC+8.
+    /// This is not pedantry. A publisher stamping
+    /// `Fri, 04 Sep 2026 22:13:46 PST` may mean Pacific Standard Time (UTC−8)
+    /// or Philippine Standard Time (UTC+8) — sixteen hours apart, enough to
+    /// place an article on the wrong DAY. `DateFormatter` under `en_US_POSIX`
+    /// silently picks Pacific.
     ///
-    /// Carter cannot infer which is meant, so it does not guess silently: the
-    /// caller supplies the zone via `CarterConfiguration.ambiguousTimeZone`.
+    /// Carter cannot infer which is meant, so it does not guess: the caller
+    /// supplies the zone via `CarterConfiguration.ambiguousTimeZone`, and
+    /// without one these are read as UTC.
     static let ambiguousAbbreviations: Set<String> = [
         "PST",  // Pacific (UTC−8) vs Philippine (UTC+8)
         "CST",  // US Central (UTC−6) vs China (UTC+8) vs Cuba

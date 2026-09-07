@@ -24,8 +24,8 @@ public struct CarterConfiguration: Sendable {
     public var maximumBodyBytes: Int
 
     /// Called with the host of every URL about to be fetched, INCLUDING after
-    /// a redirect. Return false to refuse. This is where a publisher allow-list
-    /// belongs — Carter never decides policy.
+    /// a redirect. Return false to refuse. This is where an allow-list belongs;
+    /// Carter never decides policy.
     public var isHostAllowed: (@Sendable (String) -> Bool)?
 
     /// Sent as `User-Agent`. Some publishers serve a stub to unknown agents.
@@ -37,19 +37,21 @@ public struct CarterConfiguration: Sendable {
     /// How to read a timezone abbreviation that means different things in
     /// different places, and any date written with no zone at all.
     ///
-    /// Defaults to **Asia/Manila**, because this library's consumers are
-    /// Philippine publishers: inquirer.net stamps `PST` meaning Philippine
-    /// Standard Time (UTC+8), which Foundation would otherwise read as Pacific
-    /// (UTC−8) and misdate by 16 hours, onto the wrong day. Set it for another
-    /// region, or to UTC to refuse the guess.
+    /// **Defaults to UTC, which is a guess Carter cannot make for you.** `PST`
+    /// is Pacific Standard Time in North America and Philippine Standard Time
+    /// in Manila — sixteen hours apart, enough to put an article on the wrong
+    /// day. Foundation resolves it against the formatter's locale and will
+    /// happily pick the wrong continent, so if you fetch from publishers in a
+    /// known region, SET THIS. Dates carrying an explicit numeric offset or a
+    /// `Z` are never affected.
     public var ambiguousTimeZone: TimeZone?
 
     public init(timeout: TimeInterval = 15,
                 maximumBodyBytes: Int = 5 * 1024 * 1024,
                 isHostAllowed: (@Sendable (String) -> Bool)? = nil,
-                userAgent: String = "Carter/2.0.1 (+link preview)",
+                userAgent: String = "Carter/2.1 (+https://github.com/jaysonng/Carter)",
                 defaultType: URLInformationType = .website,
-                ambiguousTimeZone: TimeZone? = TimeZone(identifier: "Asia/Manila")) {
+                ambiguousTimeZone: TimeZone? = nil) {
         self.timeout = timeout
         self.maximumBodyBytes = maximumBodyBytes
         self.isHostAllowed = isHostAllowed

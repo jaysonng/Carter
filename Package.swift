@@ -5,13 +5,9 @@ import PackageDescription
 
 let package = Package(
     name: "Carter",
-    // Carter is CROSS-PLATFORM as of 2.0. It runs in an iOS app and in a
-    // Linux server process (Vapor), because link ingestion belongs on the
-    // server: a publisher whitelist enforced only on the client is not
-    // enforcement — anyone can call the cloud function directly.
-    //
-    // iOS 14 / macOS 11 are the floors for os.Logger, which the logging shim
-    // uses on Apple platforms. Linux has no platform floor to declare.
+    // Cross-platform as of 2.0: an app target and a Linux server process can
+    // both use it. That matters for anything that validates a link before
+    // storing it, since a rule enforced only on the client is not enforced.
     platforms: [.iOS(.v14), .macOS(.v11), .tvOS(.v14), .watchOS(.v7)],
     products: [
         .library(name: "Carter", targets: ["Carter"]),

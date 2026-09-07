@@ -1,101 +1,131 @@
 # Carter
 
-Carter is a Swift library for retrieving Open Graph / metadata information from
-web pages, and for deciding when two links are **the same article**.
+Carter reads Open Graph, schema.org and Twitter-card metadata from a web page,
+and works out when two links point at **the same document**.
 
 Based on [awkward/Ocarina](https://github.com/awkward/Ocarina) by Rens Verhoeven (MIT).
 
 ## Requirements
 
 - Swift 5.9
-- iOS 14+ / macOS 11+ / tvOS 14+ / watchOS 7+, **and Linux**
-- [Kanna](https://github.com/tid-kijyun/Kanna) (needs `libxml2-dev` on Linux)
+- iOS 14+ / macOS 11+ / tvOS 14+ / watchOS 7+, and **Linux**
+- [Kanna](https://github.com/tid-kijyun/Kanna) (`libxml2-dev` on Linux)
 
 ## Usage
 
 ```swift
 import Carter
 
-let url = URL(string: "https://newsinfo.inquirer.net/some-article")!
+let url = URL(string: "https://example.com/some-article")!
 let info = try await url.carterInformation()
 
-info.title          // "…"
-info.canonicalURL   // the article's real address
-info.dedupeKey      // the string to store + uniquely index
-info.host           // "inquirer.net" — check this against your allow-list
-info.publishedAt    // Date?, parsed
+info.title          // schema.org headline, else og:title, else <title>
+info.author         // resolved through the page's @graph if it uses one
+info.canonicalURL   // the document's real address
+info.dedupeKey      // the string to store and uniquely index
+info.tags           // [String], gathered from four possible sources
+info.publishedAt    // Date?  — first publication
+info.modifiedAt     // Date?  — last edit, kept separate
 ```
 
-With a publisher allow-list and tighter limits:
+### Configuration
 
 ```swift
 var config = CarterConfiguration()
-config.isHostAllowed = { allowedPublishers.contains($0) }   // also applied AFTER redirects
+config.isHostAllowed = { allowedHosts.contains($0) }   // re-checked AFTER redirects
 config.timeout = 10
 config.maximumBodyBytes = 2 * 1024 * 1024
+config.ambiguousTimeZone = TimeZone(identifier: "Asia/Manila")   // see below
 
 let info = try await Carter(configuration: config).information(for: url)
 ```
 
-Carter is silent by default. To see diagnostics:
+Carter is silent by default:
 
 ```swift
-CarterLog.handler = { level, message in logger.log("\(message)") }
+CarterLog.handler = { level, message in myLogger.log("\(message)") }
 ```
+
+### Set `ambiguousTimeZone` if you can
+
+`PST` means Pacific Standard Time in North America and Philippine Standard Time
+in Manila — sixteen hours apart, enough to date an article to the wrong day.
+Foundation resolves the abbreviation against the formatter's locale and will
+pick a continent for you. Carter refuses to guess: unqualified abbreviations are
+read as **UTC** unless you say otherwise. Dates with an explicit offset (`+08:00`)
+or a `Z` are never affected. Same ambiguity applies to `CST`, `IST`, `BST`,
+`AMT` and `ECT`.
+
+## Where it reads from
+
+Precedence is deliberate — schema.org is what a CMS populates properly, Open
+Graph is the lowest common denominator, `<title>` is the last resort.
+
+| field | sources, in order |
+|---|---|
+| `title` | `NewsArticle.headline` · `og:title` · `twitter:title` · `<title>` |
+| `author` | `NewsArticle.author` (via `@graph`) · `author` · `article:author` |
+| `descriptionText` | `og:description` · `NewsArticle.description` · `description` |
+| `tags` | `NewsArticle.keywords` · `article:tag`(×n) · `news_keywords` · `keywords` · inline script |
+| `publishedAt` | `datePublished` · `article:published_time` · `og:pubdate` · … |
+| `imageURL` | `og:image:secure_url` · `og:image:url` · `og:image` · `twitter:image` · `NewsArticle.image` |
+
+Sampling four unrelated news sites, all four published a schema.org
+`NewsArticle` while only some published useful `og:` beyond a title and an
+image — and each of the three tag sources was the *only* one present on at
+least one site.
 
 ## Duplicate detection
 
-Carter does not talk to your database — it gives you the key to ask with.
+Carter does not talk to your storage. It gives you the key to ask with.
 
 ```swift
-let key = info.dedupeKey          // e.g. "https://inquirer.net/news/story-123"
+let key = info.dedupeKey   // "https://example.com/some-article"
 ```
 
-`dedupeKey` folds the spellings that mean one article: `http`/`https`, `www.`,
-trailing slash, `#fragment`, parameter order, and campaign parameters
-(`utm_*`, `fbclid`, `gclid`, …). It deliberately keeps parameters that select
-content (`?id=`, `?p=`), because collapsing two different articles into one is
-worse than missing a duplicate.
+`dedupeKey` folds the spellings that mean one document: `http`/`https`, `www.`,
+a trailing slash, a bare host versus `/`, `#fragment`, query-parameter order,
+and campaign parameters (`utm_*`, `fbclid`, `gclid`, …). It deliberately keeps
+parameters that select content (`?id=`, `?p=`), because collapsing two
+different documents into one is worse than missing a duplicate.
 
-**Store it and put a UNIQUE INDEX on it.** A scraper cannot enforce uniqueness:
-two people pasting the same link at the same moment both pass any
+**Store it and put a unique index on it.** A scraper cannot enforce uniqueness:
+two callers submitting the same link at the same moment both pass any
 "check, then insert" written in application code. Let the database refuse it.
+
+## Safety
+
+- Only `http` and `https` are fetched or stored — never `javascript:`, `data:`
+  or `file:`, wherever a URL enters, including one the page supplies itself.
+- A page's `rel="canonical"` / `og:url` is a **claim**. It is honoured only when
+  it stays on the same host; a refused claim is surfaced as `rejectedURLClaim`
+  rather than dropped silently.
+- `isHostAllowed` is consulted again after redirects, so an allow-list sees
+  where the request actually ended up.
+- Requests carry a timeout and a body-size cap.
 
 ## Migrating from 1.x
 
-| 1.x | 2.0 |
+| 1.x | 2.x |
 |---|---|
 | `url.carter.getURLInformation()` | `try await url.carterInformation()` |
 | returns `URLInformation?` | returns `URLInformation`, throws a specific `CarterError` |
 | `information.url` | `information.canonicalURL` (`.url` still works, deprecated) |
 | `imageSize: CGSize?` | `imageSize: ImageSize?` (`.cgSize` on Apple platforms) |
 | `Carter.Mode.basic` / `.byURL` | removed — one path, charset-aware |
-| `CarterError.failedToGetURLInformation` | specific cases: `.httpError`, `.transport`, `.notHTML`, `.hostNotAllowed`, … |
+| `.failedToGetURLInformation` | `.httpError` · `.transport` · `.notHTML` · `.hostNotAllowed` · … |
 
-`title`, `descriptionText`, `originalURL`, `imageURL`, `author`, `keywords`,
-`publishDate` (still the raw `String`) and `type` are unchanged, so a call site
-that only reads those needs no edit beyond the call itself.
+`title`, `descriptionText`, `originalURL`, `imageURL`, `author`, `keywords`
+(now comma-joined and quote-stripped) and `type` keep their 1.x shapes.
 
-### What changed and why
+## Known limits
 
-- **Runs on Linux.** 1.x imported UIKit under `#if !os(macOS)` — true on Linux —
-  plus SwiftUI, AVFoundation and `os.log`, so it could not compile server-side.
-  Ingestion belongs on the server: a publisher allow-list enforced only in the
-  app is not enforcement.
-- **A page can no longer choose where its own link points.** 1.x wrote `og:url`
-  over the requested URL with a bare `URL(string:)` — no scheme or host check —
-  so a page on an allowed domain could make you store a link to anywhere, including
-  `javascript:` and `data:`. Claims are now accepted only from the same host,
-  and a refused one is surfaced as `rejectedURLClaim`.
-- **Redirects are followed to a URL the allow-list actually sees.** 1.x discarded
-  `response.url`.
-- **A crash is gone.** The inline-keyword scraper sliced `item[start...end]`
-  with no ordering check, so any page whose script had `]` before `[` trapped
-  the process on attacker-controlled HTML.
-- **`twitter:card` is read from `twitter:card`**, not `og:type` — so `cardType`
-  is no longer `.other` for every page in existence.
-- **No `print`.** 1.x printed fourteen times per fetch and dumped the whole
-  model plus the raw response body into the host app's logs.
-- **Async, not Combine.** The old bridge leaked every `Carter` (a strong `self`
-  capture), stranded the first caller's continuation forever if a second call
-  arrived, and delivered on a `.concurrent` queue.
+- **Some sites refuse automated fetches.** Both patterns exist in the wild: a
+  challenge that allowlists named social crawlers, and an edge that demands a
+  complete browser header set and refuses even `facebookexternalhit`. Carter
+  reports these as `CarterError.httpError(statusCode: 403, url:)` so a caller
+  can degrade instead of failing. It does not impersonate a browser or another
+  company's crawler, and adding a user-agent that does is your decision, not a
+  default.
+- `normalizedHost` strips `www.` but does not implement the public suffix list,
+  so `a.example.co.uk` and `b.example.co.uk` remain distinct hosts.

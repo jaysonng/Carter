@@ -35,7 +35,9 @@ final class ParsingTests: XCTestCase {
         <script type="text/javascript">var keyword = ["manila","flood"];</script>
         </body></html>
         """
-        XCTAssertEqual(info(html).keywords, "\"manila\",\"flood\"")
+        // Quotes are stripped now that tags are parsed rather than sliced raw.
+        XCTAssertEqual(info(html).keywords, "manila,flood")
+        XCTAssertEqual(info(html).tags, ["manila", "flood"])
     }
 
     /// The security fix: a page cannot redirect where its own link is stored.
@@ -158,7 +160,7 @@ final class InquirerRegressionTests: XCTestCase {
                                   finalURL: URL(string: "https://business.inquirer.net/a")!,
                                   html: try? HTML(html: html, encoding: .utf8),
                                   mimeType: "text/html", statusCode: 200, defaultType: .website)
-        XCTAssertEqual(info.keywords, "\"Flood\",\"Real Estate\"")
+        XCTAssertEqual(info.tags, ["Flood", "Real Estate"])
         XCTAssertFalse(info.keywords?.contains("||") ?? false)
     }
 }

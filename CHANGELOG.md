@@ -5,39 +5,73 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [2.0.1] - 2026-09-08
+## [2.1.0] - 2026-09-08
 
-Both fixes came from running 2.0 against real Philippine publishers, and both
-were introduced by the 2.0 rewrite.
+### Added
+
+- **schema.org (JSON-LD) extraction.** `<script type="application/ld+json">` is
+  read for `headline`, `author`, `datePublished`, `dateModified`,
+  `articleSection`, `keywords`, `image` and `publisher`, including `@graph`
+  containers whose article refers to its author and image by `@id` — read
+  naively those yield a URL where a name should be. Sampling four unrelated
+  news sites, all four published a `NewsArticle` block while only some
+  published useful `og:` beyond a title and an image.
+- **`tags: [String]`** — gathered from schema.org `keywords`, repeatable
+  `article:tag`, `news_keywords`, the `keywords` meta tag and the inline-script
+  fallback, deduped case-insensitively with order preserved. Each of those was
+  the ONLY source present on at least one site in that sample. `keywords` stays
+  as the raw comma-joined string, now quote-stripped.
+- **`modifiedAt`**, separate from `publishedAt`.
+- **`publisherName`** from schema.org `publisher`, falling back to `og:site_name`.
+- `MetaReader.contents(forProperty:)` for repeatable tags; the previous reader
+  returned only the first, which lost every `article:tag` after the first one.
 
 ### Fixed
 
-- **`PST` is read as Philippine Standard Time, not Pacific.** inquirer.net
-  stamps articles `Fri, 04 Sep 2026 22:13:46 PST` meaning UTC+8;
-  `DateFormatter` under `en_US_POSIX` reads PST as Pacific, UTC−8. That is a
-  16-hour error, and it moves an article onto the wrong DAY — the article above
-  was dated 5 Sep when its own byline reads "September 04, 2026" and its
-  `dateModified` is the following morning.
-  Carter cannot infer which is meant, so it no longer guesses silently:
-  `CarterConfiguration.ambiguousTimeZone` decides, defaulting to `Asia/Manila`
-  because this library's consumers are Philippine publishers. Dates carrying an
-  explicit numeric offset (`+08:00`) or a `Z` are never reinterpreted —
-  manilatimes.net and tribune.net.ph were unaffected either way.
-  Ambiguous abbreviations handled: PST, CST, IST, BST, AMT, ECT.
-- **The inline-keyword scraper no longer runs past the array.** WordPress emits
+- **Inline `var keyword` scripts are found whatever the `type` attribute says.**
+  The reader required `type="text/javascript"`. Lazy-loading plugins rewrite it
+  (WP Rocket ships `type="text/rocketlazyloadscript"` and moves the real type to
+  `data-rocket-type`) and modern HTML omits it altogether, so on those pages the
+  tags were silently lost. Every `<script>` is now searched.
+
+### Changed
+
+- **`publishedAt` now prefers FIRST publication over last edit.** It previously
+  asked for `article:modified_time` first, so a story corrected years later
+  sorted as though it were new. The edit time is still available, as
+  `modifiedAt`.
+- **`ambiguousTimeZone` defaults to UTC, not to a region.** Carter is a general
+  library and must not assume where its caller's publishers are; set it if you
+  know. (2.0.1 defaulted to `Asia/Manila`, which was right for the author's
+  application and wrong for a public package.)
+
+### Fixed
+
+- A bare host and the same host written with a trailing slash produced
+  different dedupe keys — `https://example.com` versus `https://example.com/` —
+  which is precisely the duplicate the key exists to catch. An empty path is
+  now normalised to `/`.
+
+---
+
+## [2.0.1] - 2026-09-08
+
+Both fixes came from running 2.0 against live news sites.
+
+### Fixed
+
+- **Ambiguous timezone abbreviations are no longer resolved silently.** A
+  publisher stamping `Fri, 04 Sep 2026 22:13:46 PST` may mean Pacific Standard
+  Time (UTC−8) or Philippine Standard Time (UTC+8) — sixteen hours apart,
+  enough to date an article to the wrong day — and `DateFormatter` under
+  `en_US_POSIX` quietly picks Pacific. The caller now decides, via
+  `CarterConfiguration.ambiguousTimeZone`. Dates carrying an explicit numeric
+  offset or a `Z` are never reinterpreted. Handled: PST, CST, IST, BST, AMT, ECT.
+- **The inline-keyword scraper no longer runs past the array.** Some CMSes emit
   `var keyword = [...] || []`, and 2.0 took the LAST `]`, which is the empty
-  fallback — so tags arrived as `…"sustainability"] || [`. It now takes the
-  first `]` after the opening `[`. (1.x took the first `]` outright, which was
-  right here and crashed elsewhere; this keeps both correct.)
-
-### Notes
-
-- Publishers behind a Cloudflare challenge (mb.com.ph) return **403** to any
-  user-agent that is not an allowlisted social crawler — a real Chrome string is
-  refused too, so this is not something a UA tweak fixes honestly. Carter
-  reports it as `CarterError.httpError(statusCode: 403, url:)` so a caller can
-  tell "blocked" from "broken" and degrade rather than fail. Ask the publisher
-  to allowlist your crawler; do not impersonate `facebookexternalhit`.
+  fallback — trailing `] || [` into the tags. It now takes the first `]` after
+  the opening `[`. (1.x took the first `]` outright, which was right here and
+  crashed elsewhere; this keeps both.)
 
 ---
 
@@ -46,8 +80,8 @@ were introduced by the 2.0 rewrite.
 ### Added
 
 - **Cross-platform.** Runs on Linux as well as Apple platforms, so link
-  ingestion can happen on the server — a publisher allow-list enforced only in
-  the client is not enforcement.
+  ingestion can happen server-side — a rule enforced only on the client is not
+  enforced.
 - **`CanonicalURL.dedupeKey`** — the duplicate-detection key the library was
   believed to have and did not. Folds scheme, `www.`, trailing slash, fragment,
   parameter order and campaign parameters (`utm_*`, `fbclid`, …) while keeping
@@ -62,8 +96,8 @@ were introduced by the 2.0 rewrite.
 
 - **A page can no longer choose where its own link points.** `og:url` was
   written over the requested URL through a bare `URL(string:)` with no scheme
-  or host check, so a page on an allowed domain could make a caller store a
-  link to anywhere, `javascript:` and `data:` included — and every relative
+  or host check, so a page on an allow-listed domain could make a caller store
+  a link to anywhere, `javascript:` and `data:` included — and every relative
   image and favicon then resolved against that claim.
 - **Crash on hostile HTML.** The inline-keyword scraper sliced
   `item[start...end]` without checking `start <= end`, trapping the process on
