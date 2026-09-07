@@ -68,8 +68,13 @@ public enum CanonicalURL {
             components.queryItems = kept.isEmpty ? nil : kept
         }
 
+        // A bare host has an EMPTY path; the same host with "/" has "/". They
+        // are one document, so normalise to "/" before trimming — otherwise
+        // https://site.com and https://site.com/ key differently, which is a
+        // duplicate that slips straight through.
         var path = components.percentEncodedPath
         while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+        if path.isEmpty { path = "/" }
         components.percentEncodedPath = path
 
         return components.url?.absoluteString ?? components.string
