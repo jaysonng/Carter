@@ -122,3 +122,43 @@ final class ParsingTests: XCTestCase {
         XCTAssertEqual(URLInformationType.type(forMimeType: "text/html; charset=utf-8"), .website)
     }
 }
+
+/// Regressions from running Carter against a real inquirer.net article.
+final class InquirerRegressionTests: XCTestCase {
+
+    /// inquirer.net means UTC+8 by "PST"; Foundation means UTC−8. A 16-hour
+    /// error that moves the article to the wrong day.
+    func testPhilippineStandardTimeIsNotReadAsPacific() {
+        let raw = "Fri, 04 Sep 2026 22:13:46 PST"
+        let manila = DateParsing.date(from: raw, ambiguousZone: TimeZone(identifier: "Asia/Manila"))
+        XCTAssertNotNil(manila)
+        // 22:13:46 +08 on the 4th == 14:13:46Z on the 4th.
+        XCTAssertEqual(ISO8601DateFormatter().string(from: manila!), "2026-09-04T14:13:46Z")
+
+        // And the same string in a Pacific deployment stays Pacific.
+        let pacific = DateParsing.date(from: raw, ambiguousZone: TimeZone(identifier: "America/Los_Angeles"))
+        XCTAssertEqual(ISO8601DateFormatter().string(from: pacific!), "2026-09-05T05:13:46Z")
+    }
+
+    func testExplicitOffsetsAreNeverReinterpreted() {
+        let d = DateParsing.date(from: "2026-09-04T22:13:46+08:00",
+                                 ambiguousZone: TimeZone(identifier: "America/Los_Angeles"))
+        XCTAssertEqual(ISO8601DateFormatter().string(from: d!), "2026-09-04T14:13:46Z")
+    }
+
+    /// WordPress writes `var keyword = [...] || []`; taking the LAST `]`
+    /// swallowed `] || [` into the tags.
+    func testKeywordScraperStopsAtTheFirstClosingBracket() {
+        let html = """
+        <html><head><title>T</title></head><body>
+        <script type="text/javascript">var keyword = ["Flood","Real Estate"] || [];</script>
+        </body></html>
+        """
+        let info = URLInformation(originalURL: URL(string: "https://business.inquirer.net/a")!,
+                                  finalURL: URL(string: "https://business.inquirer.net/a")!,
+                                  html: try? HTML(html: html, encoding: .utf8),
+                                  mimeType: "text/html", statusCode: 200, defaultType: .website)
+        XCTAssertEqual(info.keywords, "\"Flood\",\"Real Estate\"")
+        XCTAssertFalse(info.keywords?.contains("||") ?? false)
+    }
+}

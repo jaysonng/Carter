@@ -99,7 +99,8 @@ extension URLInformation {
          html: HTMLDocument?,
          mimeType: String?,
          statusCode: Int?,
-         defaultType: URLInformationType) {
+         defaultType: URLInformationType,
+         ambiguousTimeZone: TimeZone? = nil) {
 
         self.originalURL = originalURL
         self.finalURL = finalURL
@@ -187,7 +188,7 @@ extension URLInformation {
             ?? meta.content(forProperty: "pubdate")
             ?? meta.content(forProperty: "date")
         self.publishDate = raw
-        self.publishedAt = raw.flatMap(DateParsing.date(from:))
+        self.publishedAt = raw.flatMap { DateParsing.date(from: $0, ambiguousZone: ambiguousTimeZone) }
 
         // --- Icons ----------------------------------------------------------
         self.faviconURL = meta.url(forLinkRel: "shortcut icon", relativeTo: base)
@@ -248,8 +249,11 @@ struct MetaReader {
             for statement in text.components(separatedBy: ";") {
                 guard statement.contains("var keyword"),
                       let open = statement.firstIndex(of: "["),
-                      let close = statement.lastIndex(of: "]"),
-                      open < close                       // the check 1.x lacked
+                      // The FIRST close bracket AFTER the open one. `lastIndex`
+                      // overshoots: WordPress writes `var keyword = [...] || []`,
+                      // and the last `]` is the empty fallback array, which
+                      // swallows `] || [` into the tags.
+                      let close = statement[statement.index(after: open)...].firstIndex(of: "]")
                 else { continue }
                 let inner = statement[statement.index(after: open)..<close]
                     .trimmingCharacters(in: .whitespacesAndNewlines)

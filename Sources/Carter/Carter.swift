@@ -34,16 +34,28 @@ public struct CarterConfiguration: Sendable {
     /// Type assumed when a page declares no `og:type`.
     public var defaultType: URLInformationType
 
+    /// How to read a timezone abbreviation that means different things in
+    /// different places, and any date written with no zone at all.
+    ///
+    /// Defaults to **Asia/Manila**, because this library's consumers are
+    /// Philippine publishers: inquirer.net stamps `PST` meaning Philippine
+    /// Standard Time (UTC+8), which Foundation would otherwise read as Pacific
+    /// (UTC−8) and misdate by 16 hours, onto the wrong day. Set it for another
+    /// region, or to UTC to refuse the guess.
+    public var ambiguousTimeZone: TimeZone?
+
     public init(timeout: TimeInterval = 15,
                 maximumBodyBytes: Int = 5 * 1024 * 1024,
                 isHostAllowed: (@Sendable (String) -> Bool)? = nil,
-                userAgent: String = "Carter/2.0 (+link preview)",
-                defaultType: URLInformationType = .website) {
+                userAgent: String = "Carter/2.0.1 (+link preview)",
+                defaultType: URLInformationType = .website,
+                ambiguousTimeZone: TimeZone? = TimeZone(identifier: "Asia/Manila")) {
         self.timeout = timeout
         self.maximumBodyBytes = maximumBodyBytes
         self.isHostAllowed = isHostAllowed
         self.userAgent = userAgent
         self.defaultType = defaultType
+        self.ambiguousTimeZone = ambiguousTimeZone
     }
 }
 
@@ -102,13 +114,15 @@ public struct Carter: Sendable {
         guard let mime, mime.contains("html") || mime.contains("xml") else {
             return URLInformation(originalURL: url, finalURL: finalURL, html: nil,
                                   mimeType: response.mimeType, statusCode: statusCode,
-                                  defaultType: configuration.defaultType)
+                                  defaultType: configuration.defaultType,
+                                  ambiguousTimeZone: configuration.ambiguousTimeZone)
         }
 
         let document = try parse(data, mimeType: response.mimeType)
         return URLInformation(originalURL: url, finalURL: finalURL, html: document,
                               mimeType: response.mimeType, statusCode: statusCode,
-                              defaultType: configuration.defaultType)
+                              defaultType: configuration.defaultType,
+                              ambiguousTimeZone: configuration.ambiguousTimeZone)
     }
 
     // MARK: - Internals
