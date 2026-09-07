@@ -28,6 +28,72 @@ info.publishedAt    // Date?  — first publication
 info.modifiedAt     // Date?  — last edit, kept separate
 ```
 
+### API at a glance
+
+Two ways to fetch, and four pure functions that need no network at all.
+
+```swift
+// 1. One-off. Simplest thing that works.
+let info = try await url.carterInformation()
+
+// 2. Reusable, configured. Prefer this in a server or anywhere you fetch
+//    more than once — it holds one URLSession instead of creating one per call.
+let carter = Carter(configuration: config)
+let info = try await carter.information(for: url)
+```
+
+```swift
+// No network, no async, no throwing — safe to call on any input, including
+// something a user just typed.
+CanonicalURL.isFetchableWebURL(url)     // Bool   — http/https with a host?
+CanonicalURL.normalizedHost(for: url)   // String? — "example.com", www. stripped
+CanonicalURL.dedupeKey(for: url)        // String? — the identity of the document
+CanonicalURL.isSameDocument(a, b)       // Bool   — do two links mean one page?
+```
+
+**Do the free checks first.** A fetch costs a network round trip and can be
+refused; the four functions above cost nothing. Reject a bad scheme, reject an
+unknown host, and look up the dedupe key in your own storage *before* you spend
+a request:
+
+```swift
+guard CanonicalURL.isFetchableWebURL(url) else { throw MyError.notALink }
+guard let host = CanonicalURL.normalizedHost(for: url),
+      allowedHosts.contains(host) else { throw MyError.notAllowed }
+
+if let key = CanonicalURL.dedupeKey(for: url),
+   let existing = try await store.article(withKey: key) {
+    return existing          // already have it — no fetch at all
+}
+
+let info = try await carter.information(for: url)
+```
+
+That last step is worth doing even though `information(for:)` re-derives the
+key: the URL a user pasted usually canonicalises to the same key as the stored
+one, so most duplicates are caught for free. The post-fetch key is the
+authoritative one, because only then have redirects and `rel="canonical"` been
+resolved — check both.
+
+### Handling failure
+
+Every failure is a distinct case, so a caller can decide rather than guess:
+
+```swift
+do {
+    let info = try await carter.information(for: url)
+    …
+} catch CarterError.hostNotAllowed(let host) {
+    // your allow-list refused it
+} catch CarterError.httpError(let code, _) where code == 403 || code == 429 {
+    // the site refused US — post the bare link and let the author add a title
+} catch CarterError.notHTML(let mime) {
+    // a PDF or an image; info.type still describes it
+} catch CarterError.transport {
+    // timeout or connection failure — worth retrying later
+}
+```
+
 ### Configuration
 
 ```swift
