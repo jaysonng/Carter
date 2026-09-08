@@ -1,113 +1,66 @@
 //
 //  TwitterCardInformation.swift
-//  Ocarina
 //
-//  Created by Rens Verhoeven on 15/05/2017.
-//  Copyright © 2017 awkward. All rights reserved.
+//  based on Ocarina by Rens Verhoeven (MIT)
 //
 
 import Foundation
-import AVFoundation
-import Kanna
 
-public enum TwitterCardType: String {
-    case summary = "summary"
-    case summaryWithLargeImage = "summary_large_image"
-    case app = "app"
-    case player = "player"
-    case other = "other"
-    
-    public var minimumImageSize: CGSize? {
-        switch self {
-        case .summary:
-            return CGSize(width: 144, height: 144)
-        case .summaryWithLargeImage:
-            return CGSize(width: 300, height: 157)
-        case .player:
-            return CGSize(width: 350, height: 196)
-        default:
+/// The `twitter:*` card tags, when a page provides them.
+public struct TwitterCardInformation: Equatable, Sendable {
+
+    public let cardType: TwitterCardType
+    public let title: String?
+    public let descriptionText: String?
+    public let imageURL: URL?
+    public let url: URL?
+    /// `twitter:site`, without the leading `@`.
+    public let account: String?
+    public let creator: String?
+
+    /// Returns nil when the page has no Twitter card tags at all, so a caller
+    /// can tell "absent" from "present but empty".
+    init?(meta: MetaReader, relativeTo base: URL?) {
+        let rawCard = meta.content(forProperty: "twitter:card")
+        let title = meta.content(forProperty: "twitter:title")
+        let description = meta.content(forProperty: "twitter:description")
+        let image = meta.url(forProperty: "twitter:image", relativeTo: base)
+            ?? meta.url(forProperty: "twitter:image:src", relativeTo: base)
+        let url = meta.url(forProperty: "twitter:url", relativeTo: base)
+        let site = meta.content(forProperty: "twitter:site")
+        let creator = meta.content(forProperty: "twitter:creator")
+
+        if rawCard == nil && title == nil && description == nil
+            && image == nil && url == nil && site == nil && creator == nil {
             return nil
         }
+
+        // 1.x read `og:type` here, so cardType was `.other` for every page ever
+        // parsed and `minimumImageSize` was always nil. The tag is `twitter:card`.
+        self.cardType = rawCard.flatMap(TwitterCardType.init(rawValue:)) ?? .other
+        self.title = title
+        self.descriptionText = description
+        self.imageURL = image
+        self.url = url
+        self.account = site.map { $0.hasPrefix("@") ? String($0.dropFirst()) : $0 }
+        self.creator = creator.map { $0.hasPrefix("@") ? String($0.dropFirst()) : $0 }
     }
 }
 
-/// A model containing twitter card information for a URL.
-public class TwitterCardInformation: NSCoding {
-    
-    /// The contents of the twitter:url tag of the link.
-    public var url: URL?
-    
-    /// The contents of the twitter:title tag of the link.
-    public var title: String?
-    
-    /// The contents of the twitter:description tag of the link.
-    public var descriptionText: String?
-    
-    /// An URL to an image that was provided as the twitter:image tag.
-    /// The size/ratio can be estimated using the minimumImageSize on the card type.
-    public var imageURL: URL?
-    
-    /// The type of twitter card.
-    public var cardType: TwitterCardType
-    
-    /// The twitter account associated with the URL, without the @ prefix. Parsed from the `twitter:site` tag.
-    public var account: String?
-    
-    /// Create a new instance of TwitterCardInformation with the given URL and title
-    ///
-    /// - Parameters:
-    ///   - html: The html of the page, this is used to search for (head) tags.
-    init?(html: HTMLDocument) {
-        guard html.head?.toHTML?.contains("\"twitter:") == true else {
-            return nil
-        }
-        if let typeString = html.xpath("/html/head/meta[(@property|@name)=\"og:type\"]/@content").first?.text {
-            self.cardType = TwitterCardType(rawValue: typeString) ?? TwitterCardType.other
-        } else {
-            self.cardType = .other
-        }
-        
-        if let urlString = html.xpath("/html/head/meta[(@property|@name)=\"twitter:url\"]/@content").first?.text {
-            self.url = URL(string: urlString)
-        }
-        
-        if let title = html.xpath("/html/head/meta[(@property|@name)=\"twitter:title\"]/@content").first?.text {
-            self.title = title
-        }
-        
-        if let descriptionText = html.xpath("/html/head/meta[(@property|@name)=\"twitter:description\"]/@content").first?.text {
-            self.descriptionText = descriptionText
-        }
-        
-        if let imageURLString = html.xpath("/html/head/meta[(@property|@name)=\"twitter:image\"]/@content").first?.text {
-            self.imageURL = URL(string: imageURLString)
-        }
-        
-        if let accountString = html.xpath("/html/head/meta[(@property|@name)=\"twitter:site\"]/@content").first?.text {
-            self.account = accountString.replacingOccurrences(of: "@", with: "")
+public enum TwitterCardType: String, Equatable, Sendable {
+    case summary            = "summary"
+    case summaryLargeImage  = "summary_large_image"
+    case app                = "app"
+    case player             = "player"
+    case other              = "other"
+
+    /// Twitter's documented minimum for the card to render an image.
+    public var minimumImageSize: ImageSize? {
+        switch self {
+        case .summary:           return ImageSize(width: 144, height: 144)
+        case .summaryLargeImage: return ImageSize(width: 300, height: 157)
+        case .player:            return ImageSize(width: 262, height: 262)
+        case .app, .other:       return nil
         }
     }
-    
-    public required init?(coder aDecoder: NSCoder) {
-        self.url = aDecoder.decodeObject(forKey: "url") as? URL
-        self.title = aDecoder.decodeObject(forKey: "title") as? String
-        self.descriptionText = aDecoder.decodeObject(forKey: "description") as? String
-        self.imageURL = aDecoder.decodeObject(forKey: "imageURL") as? URL
-        self.account = aDecoder.decodeObject(forKey: "account") as? String
-        if let typeString = aDecoder.decodeObject(forKey: "cardType") as? String {
-            self.cardType = TwitterCardType(rawValue: typeString) ?? TwitterCardType.other
-        } else {
-            self.cardType = TwitterCardType.other
-        }
-    }
-    
-    public func encode(with aCoder: NSCoder) {
-        aCoder.encode(self.url, forKey: "url")
-        aCoder.encode(self.title, forKey: "title")
-        aCoder.encode(self.descriptionText, forKey: "description")
-        aCoder.encode(self.imageURL, forKey: "imageURL")
-        aCoder.encode(self.account, forKey: "account")
-        aCoder.encode(self.cardType.rawValue, forKey: "cardType")
-    }
-    
 }
