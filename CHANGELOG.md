@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **Every redirect hop is vetted BEFORE it is requested.** 2.1 let URLSession
+  follow redirects and checked `isHostAllowed` only on the first and the final
+  URL — so an allowed page redirecting to `http://127.0.0.1:…` had already
+  made the request by the time the check ran. Carter's own session now refuses
+  redirects and follows them itself: scheme, `isHostAllowed` and address are
+  checked per hop, at most `maximumRedirects` (default 5) hops, then
+  `CarterError.tooManyRedirects`. A caller-supplied `session` may still follow
+  redirects itself; then only the final URL can be checked, as before.
+- **Non-public addresses are refused by default** —
+  `blocksNonPublicAddresses` (default `true`): loopback, private, CGNAT,
+  link-local (cloud metadata), multicast/reserved, IPv6 `::1`, `fc00::/7`,
+  `fe80::/10` and IPv4-mapped forms, by literal or by what the name resolves
+  to. `CarterError.addressNotAllowed`. ⚠️ URLSession resolves again on
+  connect, so DNS rebinding is not closed here — pair with an allow-list and
+  an egress firewall.
+
 ## [2.1.0] - 2026-09-08
 
 ### Added

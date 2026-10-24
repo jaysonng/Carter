@@ -24,6 +24,10 @@ public enum CarterError: Error, Equatable, CustomStringConvertible {
     /// The host is not on the caller's allow-list.
     /// Carter never decides policy; the caller supplies `isHostAllowed`.
     case hostNotAllowed(String)
+    /// The host is, or resolves to, a loopback/private/link-local address.
+    case addressNotAllowed(String)
+    /// More redirects than `CarterConfiguration.maximumRedirects`.
+    case tooManyRedirects(Int)
 
     /// The server answered, but not with success.
     case httpError(statusCode: Int, url: URL)
@@ -49,6 +53,8 @@ public enum CarterError: Error, Equatable, CustomStringConvertible {
         case .invalidURL(let s):            return "Not a valid URL: \(s)"
         case .unsupportedScheme(let s):     return "Unsupported URL scheme: \(s). Only http and https are fetched."
         case .hostNotAllowed(let h):        return "This site is not on the allowed list: \(h)"
+        case .addressNotAllowed(let h):     return "That address is not on the public internet: \(h)"
+        case .tooManyRedirects(let n):      return "The link redirected more than \(n) times."
         case .httpError(let code, let url): return "The site returned HTTP \(code) for \(url.absoluteString)"
         case .notHTML(let mime):            return "That link is not a web page\(mime.map { " (\($0))" } ?? "")."
         case .responseTooLarge(let b, let l): return "The page is too large to read (\(b) bytes, limit \(l))."

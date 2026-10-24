@@ -28,6 +28,16 @@ public struct CarterConfiguration: Sendable {
     /// Carter never decides policy.
     public var isHostAllowed: (@Sendable (String) -> Bool)?
 
+    /// Redirects Carter follows. Each hop is checked — scheme, `isHostAllowed`,
+    /// address — BEFORE it is requested; 2.1 let URLSession follow them and
+    /// checked only the last, so the hops in between were never vetted.
+    public var maximumRedirects: Int
+
+    /// Refuse loopback, private, link-local and other non-public addresses,
+    /// by literal or by what the name resolves to. On by default: a link
+    /// preview fetches a URL someone else chose, from inside your network.
+    public var blocksNonPublicAddresses: Bool
+
     /// Sent as `User-Agent`. Some publishers serve a stub to unknown agents.
     public var userAgent: String
 
@@ -49,12 +59,16 @@ public struct CarterConfiguration: Sendable {
     public init(timeout: TimeInterval = 15,
                 maximumBodyBytes: Int = 5 * 1024 * 1024,
                 isHostAllowed: (@Sendable (String) -> Bool)? = nil,
+                maximumRedirects: Int = 5,
+                blocksNonPublicAddresses: Bool = true,
                 userAgent: String = "Carter/2.1 (+https://github.com/jaysonng/Carter)",
                 defaultType: URLInformationType = .website,
                 ambiguousTimeZone: TimeZone? = nil) {
         self.timeout = timeout
         self.maximumBodyBytes = maximumBodyBytes
         self.isHostAllowed = isHostAllowed
+        self.maximumRedirects = maximumRedirects
+        self.blocksNonPublicAddresses = blocksNonPublicAddresses
         self.userAgent = userAgent
         self.defaultType = defaultType
         self.ambiguousTimeZone = ambiguousTimeZone
@@ -73,17 +87,22 @@ public struct Carter: Sendable {
 
     public let configuration: CarterConfiguration
     private let session: URLSession
+    /// True when `session` is ours and refuses redirects. A caller-supplied
+    /// session may follow them itself; then only the final URL can be checked.
+    private let followsRedirectsManually: Bool
 
     public init(configuration: CarterConfiguration = .init(), session: URLSession? = nil) {
         self.configuration = configuration
         if let session {
             self.session = session
+            self.followsRedirectsManually = false
         } else {
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = configuration.timeout
             config.timeoutIntervalForResource = configuration.timeout
             config.httpAdditionalHeaders = ["User-Agent": configuration.userAgent]
-            self.session = URLSession(configuration: config)
+            self.session = URLSession(configuration: config, delegate: RedirectRefuser(), delegateQueue: nil)
+            self.followsRedirectsManually = true
         }
     }
 
@@ -93,17 +112,32 @@ public struct Carter: Sendable {
     /// `.failedToGetURLInformation`, so a caller could not tell a blocked
     /// domain from a timeout.
     public func information(for url: URL) async throws -> URLInformation {
-        guard CanonicalURL.isFetchableWebURL(url) else {
-            throw CarterError.unsupportedScheme(url.scheme ?? "none")
+        // Follow redirects ourselves, vetting each hop BEFORE requesting it.
+        var current = url
+        var hops = 0
+        var data = Data()
+        var response: URLResponse
+        while true {
+            try vet(current)
+            (data, response) = try await load(current)
+            guard followsRedirectsManually,
+                  let http = response as? HTTPURLResponse,
+                  [301, 302, 303, 307, 308].contains(http.statusCode),
+                  let location = http.value(forHTTPHeaderField: "Location"),
+                  let next = URL(string: location, relativeTo: current)?.absoluteURL
+            else { break }
+            hops += 1
+            guard hops <= configuration.maximumRedirects else {
+                throw CarterError.tooManyRedirects(configuration.maximumRedirects)
+            }
+            current = next
         }
-        try check(host: url)
 
-        let (data, response) = try await load(url)
-
-        // Where we actually ended up. The allow-list must see this, not just
-        // the URL the user pasted — 1.x discarded it entirely.
-        let finalURL = response.url ?? url
-        if finalURL != url { try check(host: finalURL) }
+        // Where we actually ended up. With our own session that is `current`;
+        // a caller's session may have followed redirects itself, so vet the
+        // URL it reports too — the allow-list must see where we landed.
+        let finalURL = response.url ?? current
+        if finalURL != current { try vet(finalURL) }
 
         if let http = response as? HTTPURLResponse,
            !(200..<300).contains(http.statusCode) {
@@ -129,12 +163,23 @@ public struct Carter: Sendable {
 
     // MARK: - Internals
 
-    private func check(host url: URL) throws {
-        guard let allow = configuration.isHostAllowed else { return }
-        guard let host = CanonicalURL.normalizedHost(for: url) else {
-            throw CarterError.invalidURL(url.absoluteString)
+    /// Everything a URL must pass before Carter contacts it.
+    private func vet(_ url: URL) throws {
+        guard CanonicalURL.isFetchableWebURL(url) else {
+            throw CarterError.unsupportedScheme(url.scheme ?? "none")
         }
-        guard allow(host) else { throw CarterError.hostNotAllowed(host) }
+        if let allow = configuration.isHostAllowed {
+            guard let host = CanonicalURL.normalizedHost(for: url) else {
+                throw CarterError.invalidURL(url.absoluteString)
+            }
+            guard allow(host) else { throw CarterError.hostNotAllowed(host) }
+        }
+        if configuration.blocksNonPublicAddresses {
+            guard let host = url.host, !host.isEmpty else {
+                throw CarterError.invalidURL(url.absoluteString)
+            }
+            if AddressPolicy.isInternal(host: host) { throw CarterError.addressNotAllowed(host) }
+        }
     }
 
     private func load(_ url: URL) async throws -> (Data, URLResponse) {
