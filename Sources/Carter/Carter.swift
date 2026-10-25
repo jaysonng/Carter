@@ -61,7 +61,7 @@ public struct CarterConfiguration: Sendable {
                 isHostAllowed: (@Sendable (String) -> Bool)? = nil,
                 maximumRedirects: Int = 5,
                 blocksNonPublicAddresses: Bool = true,
-                userAgent: String = "Carter/2.1 (+https://github.com/jaysonng/Carter)",
+                userAgent: String = "Carter/2.2 (+https://github.com/jaysonng/Carter)",
                 defaultType: URLInformationType = .website,
                 ambiguousTimeZone: TimeZone? = nil) {
         self.timeout = timeout

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [2.2.0] - 2026-10-25
+
 ### Security
 
 - **Every redirect hop is vetted BEFORE it is requested.** 2.1 let URLSession
