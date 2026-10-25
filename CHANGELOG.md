@@ -9,6 +9,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.2.1] - 2026-10-25
+
+### Fixed
+
+- **2.2.0 did not build on Linux.** `AddressPolicy.swift` used `URLSession`,
+  `URLRequest` and `URLSessionTaskDelegate` without importing
+  `FoundationNetworking`, where they live off Apple platforms — found by
+  lokality-cloud's Linux CI image build. macOS builds and tests were green.
+  Verified with `swift build` and `swift test` (34 tests) in the `swift:6.0`
+  Linux image. **Do not use 2.2.0 on Linux.**
+
+---
+
 ## [2.2.0] - 2026-10-25
 
 ### Security

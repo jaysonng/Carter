@@ -15,6 +15,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking   // URLSession and its delegate types live here on Linux
+#endif
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
